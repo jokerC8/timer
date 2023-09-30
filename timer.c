@@ -193,8 +193,10 @@ void doip_timer_loop(doip_loop_t *loop)
 		if (timer->cb) {
 			timer->cb(loop, timer->userdata);
 		}
-		timer->timeout += timer->repeat;
-		down(loop, timer->index);
+		if (!timer->once) {
+			timer->timeout += timer->repeat;
+			down(loop, timer->index);
+		}
 	}
 }
 
