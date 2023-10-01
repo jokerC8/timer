@@ -177,6 +177,7 @@ static int doip_timer_empty(doip_loop_t *loop)
 void doip_timer_loop(doip_loop_t *loop)
 {
 	doip_timer_t *timer;
+	unsigned long current;
 
 	while (1) {
 		if (doip_timer_empty(loop)) {
@@ -184,17 +185,18 @@ void doip_timer_loop(doip_loop_t *loop)
 		}
 
 		timer = loop->timers[1];
-		if (timer->timeout > get_system_runtime()) {
+		current = get_system_runtime();
+		if (timer->timeout > current) {
 			break;
 		}
 		if (timer->once) {
 			doip_timer_stop(loop, timer);
 		}
 		if (timer->cb) {
-			timer->cb(loop, timer->userdata);
+			timer->cb(loop, timer);
 		}
 		if (!timer->once) {
-			timer->timeout += timer->repeat;
+			timer->timeout = current + timer->repeat;
 			down(loop, timer->index);
 		}
 	}
