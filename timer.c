@@ -191,13 +191,12 @@ void doip_timer_loop(doip_loop_t *loop)
 		}
 		if (timer->once) {
 			doip_timer_stop(loop, timer);
+		} else {
+			timer->timeout = current + timer->repeat;
+			down(loop, timer->index);
 		}
 		if (timer->cb) {
 			timer->cb(loop, timer);
-		}
-		if (!timer->once) {
-			timer->timeout = current + timer->repeat;
-			down(loop, timer->index);
 		}
 	}
 }
