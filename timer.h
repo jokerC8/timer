@@ -1,48 +1,49 @@
-#ifndef __DOIP_TIMER_H__
-#define __DOIP_TIMER_H__
+#ifndef __HEAP_TIMER_H__
+#define __HEAP_TIMER_H__
 
-struct doip_loop;
-typedef struct doip_loop doip_loop_t;
+struct timer_loop;
+typedef struct timer_loop timer_loop_t;
 
-struct doip_timer;
-typedef struct doip_timer doip_timer_t;
+struct heap_timer;
+typedef struct heap_timer heap_timer_t;
 
 #define DOIP_TIMER_MIN_CAPACITY   (256)
 
-struct doip_loop {
+struct timer_loop {
 	unsigned long count;
 	unsigned long capacity;
-	doip_timer_t **timers;
+	heap_timer_t **timers;
 };
 
-struct doip_timer {
+struct heap_timer {
 	int valid;
 	int once;
-	int index;
+	unsigned long sn;
+	unsigned long index;
 	double timeout;
 	double delay;
 	double repeat;
 	void *userdata;
-	void (*cb)(doip_loop_t *loop, doip_timer_t *timer);
+	void (*cb)(timer_loop_t *loop, heap_timer_t *timer);
 };
 
 
-doip_loop_t *doip_loop_alloc(int size);
+timer_loop_t *timer_loop_alloc(int size);
 
-doip_timer_t *doip_timer_alloc(void (*cb)(doip_loop_t *loop, doip_timer_t *timer), double timeout, double delay, unsigned char once);
+heap_timer_t *heap_timer_alloc(void (*cb)(timer_loop_t *loop, heap_timer_t *timer), double timeout, double delay, unsigned char once);
 
-void doip_timer_start(doip_loop_t *loop, doip_timer_t *timer);
+void heap_timer_start(timer_loop_t *loop, heap_timer_t *timer);
 
-void doip_timer_stop(doip_loop_t *loop, doip_timer_t *timer);
+void heap_timer_stop(timer_loop_t *loop, heap_timer_t *timer);
 
-void doip_timer_set_userdata(doip_timer_t *timer, void *userdata);
+void heap_timer_set_userdata(heap_timer_t *timer, void *userdata);
 
-void doip_timer_destroy(doip_timer_t *timer);
+void *heap_timer_userdata(heap_timer_t *timer);
 
-void doip_timer_loop(doip_loop_t *loop);
+void heap_timer_destroy(heap_timer_t *timer);
 
-void doip_timer_loop_forever(doip_loop_t *loop);
+void heap_timer_loop(timer_loop_t *loop);
 
-void doip_timer_dump(doip_loop_t *loop);
+void heap_timer_loop_forever(timer_loop_t *loop);
 
 #endif

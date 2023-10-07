@@ -5,7 +5,7 @@
 #include <time.h>
 #include <poll.h>
 
-static unsigned long get_system_runtime()
+static double get_system_runtime()
 {
 	struct timespec ts;
 
@@ -14,70 +14,15 @@ static unsigned long get_system_runtime()
 	return ts.tv_sec * 1000 + ts.tv_nsec / 1e6;
 }
 
-doip_loop_t *doip_loop_alloc(int size)
+static int heap_timer_empty(timer_loop_t *loop)
 {
-	doip_loop_t *loop;
-
-	if (size < DOIP_TIMER_MIN_CAPACITY) {
-		size = DOIP_TIMER_MIN_CAPACITY;
-	}
-
-	loop = malloc(sizeof(doip_loop_t));
-	if (!loop) {
-		goto nomem;
-	}
-
-	loop->count = 0;
-	loop->capacity = size;
-	loop->timers = malloc(size * sizeof(void *));
-	if (!loop->timers) {
-		goto nomem;
-	}
-
-	return loop;
-
-nomem:
-	if (loop) {
-		free(loop);
-		loop = NULL;
-	}
-	return NULL;
+	return !(loop->count > 0);
 }
 
-doip_timer_t *doip_timer_alloc(void (*cb)(doip_loop_t *loop, doip_timer_t *timer), double timeout, double delay, unsigned char once)
-{
-	doip_timer_t *timer;
-
-	timer = malloc(sizeof(*timer));
-	if (!timer) {
-		return NULL;
-	}
-
-	timer->cb = cb;
-	timer->valid = 0;
-	timer->timeout = 0;
-	timer->delay = delay;
-	timer->repeat = timeout;
-	timer->once = once;
-	timer->index = 0;
-	timer->userdata = NULL;
-
-	return timer;
-}
-
-void doip_timer_set_userdata(doip_timer_t *timer, void *userdata)
-{
-	if (!timer) {
-		return;
-	}
-
-	timer->userdata = userdata;
-}
-
-static void up(doip_loop_t *loop, unsigned long index)
+static void up(timer_loop_t *loop, unsigned long index)
 {
 	unsigned long child;
-	doip_timer_t *temp;
+	heap_timer_t *temp;
 
 	while (index / 2) {
 		child = index / 2;
@@ -85,18 +30,19 @@ static void up(doip_loop_t *loop, unsigned long index)
 			/* swap */
 			loop->timers[child]->index = index;
 			loop->timers[index]->index = child;
-			temp = loop->timers[index];	
+			temp = loop->timers[index];
 			loop->timers[index] = loop->timers[child];
 			loop->timers[child] = temp;
 		}
-		index /= 2;
+
+		index = child;
 	}
 }
 
-static void down(doip_loop_t *loop, unsigned long index)
+static void down(timer_loop_t *loop, unsigned long index)
 {
 	unsigned long father;
-	doip_timer_t *temp;
+	heap_timer_t *temp;
 
 	if (!(loop && index > 0)) {
 		return;
@@ -120,18 +66,79 @@ static void down(doip_loop_t *loop, unsigned long index)
 	}
 }
 
-void doip_timer_start(doip_loop_t *loop, doip_timer_t *timer)
+timer_loop_t *timer_loop_alloc(int size)
 {
+	timer_loop_t *loop = NULL;
+
+	if (size < DOIP_TIMER_MIN_CAPACITY) {
+		size = DOIP_TIMER_MIN_CAPACITY;
+	}
+
+	loop = calloc(1, sizeof(timer_loop_t));
+	if (loop) {
+		loop->count = 0;
+		loop->capacity = size;
+		loop->timers = calloc(size, sizeof(void *));
+		if (!loop->timers) {
+			goto nomem;
+		}
+	}
+
+	return loop;
+
+nomem:
+	if (loop) {
+		free(loop);
+		loop = NULL;
+	}
+	return NULL;
+}
+
+heap_timer_t *heap_timer_alloc(void (*cb)(timer_loop_t *loop, heap_timer_t *timer), double timeout, double delay, unsigned char once)
+{
+	heap_timer_t *timer = NULL;
+
+	timer = calloc(1, sizeof(*timer));
+	if (timer) {
+		timer->cb = cb;
+		timer->valid = 0;
+		timer->sn = 0;
+		timer->timeout = 0;
+		timer->delay = delay;
+		timer->repeat = timeout;
+		timer->once = once;
+		timer->index = 0;
+		timer->userdata = NULL;
+	}
+
+	return timer;
+}
+
+void heap_timer_start(timer_loop_t *loop, heap_timer_t *timer)
+{
+	unsigned long index;
+
 	if (!(loop && timer)) {
 		return;
 	}
 
+	/* if user modify timer's timeout in timer's callback
+	 * function, heap_timer_start must be called again, it
+	 * will keep the array as a minimal heap.
+	 */
+	if (timer->valid) {
+		index = timer->index;
+		up(loop, index);
+		down(loop, index);
+		return;
+	}
+
 	if (loop->count == loop->capacity - 1) {
-		doip_timer_t **timers = calloc(1, (loop->capacity + DOIP_TIMER_MIN_CAPACITY)* sizeof(void *));
+		heap_timer_t **timers = calloc(1, (loop->capacity + DOIP_TIMER_MIN_CAPACITY)* sizeof(void *));
 		memcpy(timers, loop->timers, loop->capacity * sizeof(void *));
 		free(loop->timers);
 		loop->timers = timers;
-		loop->capacity = loop->capacity + DOIP_TIMER_MIN_CAPACITY;
+		loop->capacity += DOIP_TIMER_MIN_CAPACITY;
 	}
 
 	loop->count++;
@@ -143,10 +150,11 @@ void doip_timer_start(doip_loop_t *loop, doip_timer_t *timer)
 	timer->timeout += timer->repeat;
 	timer->timeout = get_system_runtime() + timer->timeout;
 	timer->valid = 1;
+	timer->sn = loop->count;
 	up(loop, loop->count);
 }
 
-void doip_timer_stop(doip_loop_t *loop, doip_timer_t *timer)
+void heap_timer_stop(timer_loop_t *loop, heap_timer_t *timer)
 {
 	if (!(loop && timer)) {
 		return;
@@ -161,26 +169,33 @@ void doip_timer_stop(doip_loop_t *loop, doip_timer_t *timer)
 	}
 }
 
-void doip_timer_destroy(doip_timer_t *timer)
+void heap_timer_destroy(heap_timer_t *timer)
 {
 	if (timer) {
-		memset(timer, 0, sizeof(doip_timer_t));
+		memset(timer, 0, sizeof(heap_timer_t));
 		free(timer);
 	}
 }
 
-static int doip_timer_empty(doip_loop_t *loop)
+void heap_timer_set_userdata(heap_timer_t *timer, void *userdata)
 {
-	return !(loop->count > 0);
+	if (timer) {
+		timer->userdata = userdata;
+	}
 }
 
-void doip_timer_loop(doip_loop_t *loop)
+void *heap_timer_userdata(heap_timer_t *timer)
 {
-	doip_timer_t *timer;
+	return (!!timer) ? timer->userdata : NULL;
+}
+
+void heap_timer_loop(timer_loop_t *loop)
+{
+	heap_timer_t *timer;
 	unsigned long current;
 
 	while (1) {
-		if (doip_timer_empty(loop)) {
+		if (heap_timer_empty(loop)) {
 			return;
 		}
 
@@ -190,7 +205,8 @@ void doip_timer_loop(doip_loop_t *loop)
 			break;
 		}
 		if (timer->once) {
-			doip_timer_stop(loop, timer);
+			heap_timer_stop(loop, timer);
+
 		} else {
 			timer->timeout = current + timer->repeat;
 			down(loop, timer->index);
@@ -201,10 +217,10 @@ void doip_timer_loop(doip_loop_t *loop)
 	}
 }
 
-void doip_timer_loop_forever(doip_loop_t *loop)
+void heap_timer_loop_forever(timer_loop_t *loop)
 {
 	while (1) {
-		doip_timer_loop(loop);
+		heap_timer_loop(loop);
 		poll(0, 0, 10);
 	}
 }
