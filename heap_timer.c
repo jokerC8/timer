@@ -1,4 +1,4 @@
-#include "timer.h"
+#include "heap_timer.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

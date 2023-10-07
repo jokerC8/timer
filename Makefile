@@ -4,8 +4,8 @@ CC := clang
 CFLAGS += -g -O0 -Wall -Werror -fPIC
 LDFLAGS +=
 
-src := timer.c \
-	   timer_test.c
+src := heap_timer.c \
+	   heap_timer_test.c
 
 obj := $(patsubst %.c, %.o, $(src))
 

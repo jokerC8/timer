@@ -1,12 +1,19 @@
-#include "timer.h"
+#include "heap_timer.h"
 #include <stdio.h>
 #include <stdlib.h>
+
+static void timer_callback1(timer_loop_t *loop, heap_timer_t *timer)
+{
+	fprintf(stdout, "[timer:%p] timeout:%f, count:%ld, cap:%ld, sn:%ld\n", timer, timer->repeat, loop->count, loop->capacity, timer->sn);
+	//heap_timer_stop(loop, timer);
+	//heap_timer_destroy(timer);
+}
 
 static void timer_callback(timer_loop_t *loop, heap_timer_t *timer)
 {
 	fprintf(stdout, "[timer:%p] timeout:%f, count:%ld, cap:%ld, sn:%ld\n", timer, timer->repeat, loop->count, loop->capacity, timer->sn);
-	//doip_timer_stop(loop, timer);
-	//doip_timer_destroy(timer);
+	heap_timer_t *timer1 = heap_timer_alloc(timer_callback1, 10, 0, 0);
+	heap_timer_start(loop, timer1);
 }
 
 int main(void)
@@ -20,7 +27,6 @@ int main(void)
 
 	for (int i = 0; i < 500; i++) {
 		heap_timer_t *timer = heap_timer_alloc(timer_callback, 100 * (i + 1), 0, 0);
-		heap_timer_set_userdata(timer, timer);
 		heap_timer_start(loop, timer);
 	}
 
